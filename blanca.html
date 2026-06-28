@@ -1,0 +1,810 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NexUs Infotech Premium Player - Aspect Ratio Fix</title>
+    
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;700&display=swap" rel="stylesheet">
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/shaka-player/4.7.11/shaka-player.compiled.js"></script>
+
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+
+        body {
+            background-color: #0f171e;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            font-family: 'Google Sans', 'Product Sans', 'Outfit', sans-serif;
+            --video-brightness: 1;
+            --video-grayscale: 0%;
+        }
+
+        .player-container {
+            position: relative;
+            width: 100%;
+            max-width: 1000px;
+            background: #000;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.9);
+            aspect-ratio: 16/9;
+            overflow: hidden;
+            border-radius: 8px;
+        }
+
+        /* 🎬 Cinematic Splash Screen */
+        .splash-screen {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background-color: #000;
+            background-image: url('https://i.ibb.co/27wbD6BQ/sluichi-splash.jpg');
+            background-size: cover; background-position: center; background-repeat: no-repeat;
+            z-index: 100; transition: opacity 1s ease-in-out; 
+            animation: smoothZoom 10s ease-out forwards;
+        }
+        @keyframes smoothZoom { 0% { transform: scale(1); } 100% { transform: scale(1.06); } }
+
+        video { 
+            width: 100%; height: 100%; display: block; 
+            filter: brightness(var(--video-brightness)) grayscale(var(--video-grayscale));
+            transition: filter 0.3s ease;
+        }
+        
+        .video-grayscale { --video-grayscale: 100% !important; }
+
+        /* 📺 ASPECT RATIO LOGIC */
+        video.ratio-16-9, video.ratio-4-3 {
+            position: absolute; top: 0; bottom: 0; left: 0; right: 0;
+            margin: auto; width: auto !important; height: auto !important;
+            max-width: 100% !important; max-height: 100% !important;
+            object-fit: fill !important; /* Forces stretch to the exact aspect ratio */
+        }
+        video.ratio-16-9 { aspect-ratio: 16 / 9 !important; }
+        video.ratio-4-3 { aspect-ratio: 4 / 3 !important; }
+
+        /* 📌 TOAST NOTIFICATION */
+        .toast-msg {
+            position: absolute; top: 25px; left: 50%; transform: translateX(-50%);
+            background: rgba(0, 168, 225, 0.9); color: #fff; padding: 8px 20px;
+            border-radius: 30px; font-size: 14px; font-weight: 700; opacity: 0;
+            pointer-events: none; transition: opacity 0.3s ease-in-out; z-index: 60;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5); letter-spacing: 0.5px;
+        }
+        .toast-msg.show { opacity: 1; }
+
+        /* ☀️ Brightness Indicator UI (Left) */
+        .brightness-wrapper {
+            position: absolute; left: 40px; top: 50%; transform: translateY(-50%);
+            display: flex; align-items: center; gap: 12px; opacity: 0;
+            transition: opacity 0.3s ease; z-index: 25; pointer-events: none;
+        }
+        .brightness-wrapper.show { opacity: 1; pointer-events: auto; }
+
+        /* 🔊 Volume Indicator UI (Right) */
+        .volume-swipe-wrapper {
+            position: absolute; right: 40px; top: 50%; transform: translateY(-50%);
+            display: flex; align-items: center; gap: 12px; opacity: 0;
+            transition: opacity 0.3s ease; z-index: 25; pointer-events: none;
+        }
+        .volume-swipe-wrapper.show { opacity: 1; pointer-events: auto; }
+
+        .swipe-panel {
+            background: rgba(0, 0, 0, 0.6); border-radius: 30px; padding: 20px 12px;
+            display: flex; flex-direction: column; align-items: center; gap: 15px;
+            backdrop-filter: blur(5px); border: 1px solid rgba(255,255,255,0.1);
+        }
+        .swipe-panel .material-symbols-outlined { color: #fff; font-size: 26px; }
+        
+        .swipe-bar-bg { width: 6px; height: 120px; background: rgba(255,255,255,0.2); border-radius: 3px; position: relative; overflow: hidden; }
+        .swipe-bar-fill { position: absolute; bottom: 0; left: 0; width: 100%; background: #00a8e1; border-radius: 3px; transition: height 0.1s linear; }
+        
+        #brightnessBarFill { height: 47.3%; } 
+        #volumeSwipeBarFill { height: 100%; }
+
+        .reset-action-btn {
+            background: rgba(0, 0, 0, 0.6); border: 1px solid rgba(255,255,255,0.1);
+            color: #fff; border-radius: 50%; width: 44px; height: 44px;
+            display: flex; justify-content: center; align-items: center;
+            cursor: pointer; backdrop-filter: blur(5px); transition: background 0.2s, transform 0.1s;
+        }
+        .reset-action-btn:hover { background: #00a8e1; color: #fff; }
+        .reset-action-btn:active { transform: scale(0.9); }
+
+        .spinner {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            width: 50px; height: 50px; border: 5px solid rgba(255,255,255,0.2);
+            border-top-color: #00a8e1; border-radius: 50%;
+            animation: spin 1s linear infinite; display: none; z-index: 10;
+        }
+        @keyframes spin { 100% { transform: translate(-50%, -50%) rotate(360deg); } }
+
+        /* Stats for Nerds Box */
+        .stats-overlay {
+            position: absolute; top: 20px; left: 20px; background: rgba(0, 0, 0, 0.75); color: #fff;
+            padding: 15px 20px; border-radius: 8px; font-size: 13px; font-family: 'Google Sans', 'Product Sans', 'Outfit', sans-serif; 
+            z-index: 40; display: none; border: 1px solid rgba(255,255,255,0.15); backdrop-filter: blur(5px); min-width: 270px; 
+            max-height: calc(100% - 85px); 
+            overflow-y: auto;
+        }
+        
+        .stats-overlay::-webkit-scrollbar { width: 4px; }
+        .stats-overlay::-webkit-scrollbar-thumb { background: #00a8e1; border-radius: 4px; }
+        .stats-overlay::-webkit-scrollbar-track { background: transparent; }
+
+        .stat-row { display: flex; justify-content: space-between; gap: 30px; margin-bottom: 6px; }
+        .stat-row:last-child { margin-bottom: 0; }
+        .stat-row span:nth-child(2) { color: #00a8e1; font-weight: 700; text-align: right; }
+        .stat-divider { height: 1px; background: rgba(255,255,255,0.1); margin: 10px 0; }
+
+        /* 👨‍💻 Developer Info Popup Styling */
+        .info-overlay {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            background: rgba(15, 23, 30, 0.85); color: #fff; padding: 25px 30px; border-radius: 12px;
+            z-index: 50; display: none; border: 1px solid rgba(255,255,255,0.15);
+            backdrop-filter: blur(15px); text-align: center; min-width: 320px;
+            box-shadow: 0 15px 40px rgba(0,0,0,0.8); animation: fadeInScale 0.2s ease-out;
+        }
+        @keyframes fadeInScale {
+            0% { opacity: 0; transform: translate(-50%, -50%) scale(0.9); }
+            100% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+        }
+        .info-title { font-size: 20px; font-weight: 700; color: #00a8e1; margin-bottom: 4px; margin-top: 12px; text-transform: uppercase; letter-spacing: 1px; }
+        .info-subtitle { font-size: 13px; font-weight: 500; color: #aaa; margin-bottom: 18px; }
+        .info-text { font-size: 12px; color: #ccc; line-height: 1.6; }
+        .info-copyright { font-size: 11px; color: #777; margin-top: 18px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 12px; }
+        .info-close-btn { position: absolute; top: 10px; right: 10px; background: none; border: none; color: #aaa; cursor: pointer; }
+        .info-close-btn:hover { color: #fff; }
+
+        .update-btn {
+            width: 100%; margin-top: 8px; padding: 10px; background: #00a8e1; color: #fff; border: none;
+            border-radius: 6px; font-family: inherit; font-weight: 700; cursor: pointer; transition: background 0.2s, transform 0.1s;
+        }
+        .update-btn:hover:not(:disabled) { background: #0087b5; }
+        .update-btn:active:not(:disabled) { transform: scale(0.98); }
+        .update-btn:disabled { background: #444; color: #999; cursor: not-allowed; border: 1px solid #555; }
+
+        .outline-btn { background: #1a242f; color: #00a8e1; border: 1px solid #00a8e1; }
+        .outline-btn:hover { background: #00a8e1; color: #fff; }
+
+        #graphContainer {
+            display: none; margin-top: 10px; width: 100%; border-radius: 6px; background: rgba(0, 0, 0, 0.6); 
+            border: 1px solid rgba(255,255,255,0.1); padding: 5px; overflow: hidden;
+        }
+        canvas { width: 100%; display: block; }
+
+        .center-play {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.6); border-radius: 50%; padding: 20px; cursor: pointer; display: flex; opacity: 0;
+            pointer-events: none; transition: opacity 0.2s, background 0.2s; z-index: 5;
+        }
+        .center-play .material-symbols-outlined { font-size: 60px; color: white; }
+        .player-container.paused .center-play { opacity: 1; pointer-events: auto; }
+        .player-container.paused .center-play:hover { background: rgba(0, 168, 225, 0.8); }
+
+        .controls-overlay {
+            position: absolute; bottom: 0; left: 0; right: 0;
+            background: linear-gradient(to top, rgba(0,0,0,0.95) 0%, rgba(0,0,0,0.6) 50%, transparent 100%);
+            padding: 30px 20px 15px 20px; display: flex; flex-direction: column; transition: opacity 0.3s ease; opacity: 1; z-index: 20;
+        }
+        .player-container.hide-controls .controls-overlay { opacity: 0; pointer-events: none; }
+        .player-container.hide-controls { cursor: none; }
+
+        ::cue { background-color: rgba(0, 0, 0, 0.8); color: #ffffff; font-size: 1.2rem; font-family: 'Google Sans', 'Outfit', sans-serif; border-radius: 4px; text-shadow: 1px 1px 2px black; font-weight: 500; }
+
+        .progress-container { width: 100%; display: flex; align-items: center; margin-bottom: 15px; }
+        .progress-bar {
+            -webkit-appearance: none; width: 100%; height: 5px; background: rgba(255, 255, 255, 0.3); border-radius: 5px; cursor: pointer; transition: height 0.1s ease;
+        }
+        .progress-bar:hover { height: 8px; }
+        .progress-bar::-webkit-slider-thumb {
+            -webkit-appearance: none; width: 16px; height: 16px; border-radius: 50%; background: #00a8e1; box-shadow: 0 0 8px rgba(0, 168, 225, 0.8);
+        }
+
+        .controls-row { display: flex; justify-content: space-between; align-items: center; width: 100%; }
+        .controls-left, .controls-right { display: flex; align-items: center; gap: 10px; }
+
+        button.icon-btn { background: none; border: none; color: #fff; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: color 0.2s, transform 0.2s; padding: 5px; }
+        button.icon-btn:hover { color: #00a8e1; transform: scale(1.1); }
+        button.icon-btn.active .material-symbols-outlined { color: #00a8e1; }
+        .material-symbols-outlined { font-size: 28px; }
+
+        .volume-wrapper-bottom { display: flex; align-items: center; gap: 5px; margin-right: 10px;}
+        .volume-slider { -webkit-appearance: none; width: 0; height: 4px; background: #fff; border-radius: 2px; opacity: 0; transition: width 0.3s, opacity 0.3s; cursor: pointer; }
+        .volume-wrapper-bottom:hover .volume-slider { width: 80px; opacity: 1; }
+        .volume-slider::-webkit-slider-thumb { -webkit-appearance: none; width: 12px; height: 12px; border-radius: 50%; background: #00a8e1; }
+        .time-display { color: #ccc; font-size: 14px; font-weight: 500; letter-spacing: 0.5px; }
+
+        .settings-wrapper { position: relative; display: flex; align-items: center; }
+        .settings-menu {
+            position: absolute; bottom: 50px; right: -10px; background: rgba(15, 23, 30, 0.95); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px; display: none; flex-direction: column; min-width: 140px; z-index: 30; box-shadow: 0 5px 15px rgba(0,0,0,0.5); overflow: hidden;
+        }
+        .settings-wrapper.active .settings-menu { display: flex; }
+        .popup-btn { background: none; border: none; color: #fff; padding: 12px 20px; width: 100%; text-align: left; font-size: 14px; font-weight: 500; font-family: inherit; cursor: pointer; transition: background 0.2s; border-bottom: 1px solid rgba(255,255,255,0.05); }
+        .popup-btn:last-child { border-bottom: none; }
+        .popup-btn:hover { background: #1a242f; color: #fff; }
+        .popup-btn.disabled { color: #777; cursor: default; }
+        .popup-btn.disabled:hover { background: none; }
+        .popup-btn.active { color: #00a8e1; font-weight: 700; }
+        .popup-btn.active::before { content: '✓'; margin-right: 8px; }
+
+        /* 📱 MOBILE RESPONSIVE FIXES */
+        @media (max-width: 768px) {
+            .stats-overlay { 
+                top: 10px; left: 10px; padding: 10px 12px; font-size: 11px; min-width: auto; 
+                max-width: calc(100% - 20px); 
+                max-height: calc(100% - 65px); 
+            }
+            .stat-row { gap: 15px; margin-bottom: 4px; }
+            .update-btn { padding: 8px; font-size: 11px; }
+            #graphContainer { padding: 3px; }
+            .brightness-wrapper { left: 15px; gap: 8px; }
+            .volume-swipe-wrapper { right: 15px; gap: 8px; }
+            .swipe-panel { padding: 15px 10px; }
+            .swipe-bar-bg { height: 100px; }
+            .reset-action-btn { width: 38px; height: 38px; }
+            .info-overlay { padding: 20px; min-width: 280px; }
+            
+            .controls-overlay { padding: 30px 10px 10px 10px; }
+            .controls-left, .controls-right { gap: 2px; }
+            .material-symbols-outlined { font-size: 22px; }
+            button.icon-btn { padding: 4px; }
+            
+            .time-display { position: absolute; top: 10px; right: 15px; font-size: 12px; color: #fff; font-weight: 700; }
+            .volume-slider { display: none !important; }
+            .volume-wrapper-bottom { margin-right: 0px; }
+            .progress-container { margin-bottom: 8px; }
+            
+            .settings-menu { right: 0; min-width: 125px; bottom: 45px; }
+            .popup-btn { padding: 10px 15px; font-size: 13px; }
+        }
+
+        @media (max-width: 400px) {
+            .material-symbols-outlined { font-size: 20px; }
+            button.icon-btn { padding: 2px; }
+            #bwToggleBtn, #infoBtn { display: none; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="player-container paused" id="playerContainer">
+        
+        <div class="splash-screen" id="splashScreen"></div>
+        <div class="toast-msg" id="toastMsg">Aspect Ratio: Default</div>
+
+        <div class="info-overlay" id="infoOverlay">
+            <button class="info-close-btn" id="infoCloseBtn"><span class="material-symbols-outlined">close</span></button>
+            <span class="material-symbols-outlined" style="font-size: 45px; color: #00a8e1;">code</span>
+            <div class="info-title">SRI GOURAB LAYAK</div>
+            <div class="info-subtitle">Lead Developer & Architect</div>
+            
+            <div class="info-text">
+                <strong style="color: #fff; font-size: 13px;">NexUs Infotech Private Limited</strong><br>
+                <div style="margin-top: 8px;">
+                    Kalla Purba Para, C.H Kalla,<br>
+                    Asansol, 713340, Paschim Bardhaman,<br>
+                    West Bengal, IN
+                </div>
+            </div>
+            
+            <div class="info-copyright">
+                &copy; 2026 NexUs Infotech Pvt. Ltd.<br>All Rights Reserved.
+            </div>
+        </div>
+
+        <div class="brightness-wrapper" id="brightnessWrapper">
+            <div class="swipe-panel">
+                <span class="material-symbols-outlined">light_mode</span>
+                <div class="swipe-bar-bg">
+                    <div class="swipe-bar-fill" id="brightnessBarFill"></div>
+                </div>
+            </div>
+            <button class="reset-action-btn" id="resetBrightnessBtn" title="Reset Default Brightness">
+                <span class="material-symbols-outlined">restart_alt</span>
+            </button>
+        </div>
+
+        <div class="volume-swipe-wrapper" id="volumeSwipeWrapper">
+            <button class="reset-action-btn" id="resetVolumeBtn" title="Reset Full Volume">
+                <span class="material-symbols-outlined">restart_alt</span>
+            </button>
+            <div class="swipe-panel">
+                <span class="material-symbols-outlined" id="volumeSwipeIcon">volume_up</span>
+                <div class="swipe-bar-bg">
+                    <div class="swipe-bar-fill" id="volumeSwipeBarFill"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="stats-overlay" id="statsOverlay">
+            <div class="stat-row"><span>Player Engine:</span> <span id="statPlayerName">--</span></div>
+            <div class="stat-row"><span>Version:</span> <span id="statPlayerVer">--</span></div>
+            <div class="stat-row"><span>Format:</span> <span id="statFormat">--</span></div>
+            <div class="stat-row"><span>DRM Type:</span> <span id="statDrm">--</span></div>
+            <div class="stat-divider"></div>
+            <div class="stat-row"><span>Resolution:</span> <span id="statRes">--</span></div>
+            <div class="stat-row"><span>Network:</span> <span id="statBandwidth">--</span></div>
+            <div class="stat-row"><span>Video Bitrate:</span> <span id="statBitrate">--</span></div>
+            <div class="stat-divider"></div>
+            
+            <button class="update-btn outline-btn" id="toggleGraphBtn">Show Buffer Health Graph</button>
+            
+            <div id="graphContainer">
+                <canvas id="bufferGraph" width="250" height="70"></canvas>
+            </div>
+
+            <button class="update-btn" id="updateVersionBtn">Update Player Version</button>
+        </div>
+
+        <video id="video"></video>
+        <div class="spinner" id="spinner"></div>
+
+        <div class="center-play" id="centerPlayBtn">
+            <span class="material-symbols-outlined">play_arrow</span>
+        </div>
+
+        <div class="controls-overlay" id="controlsOverlay">
+            <div class="time-display">
+                <span id="currentTime">00:00</span> / <span id="duration">00:00</span>
+            </div>
+            
+            <div class="progress-container">
+                <input type="range" class="progress-bar" id="progressBar" value="0" min="0" step="0.1">
+            </div>
+
+            <div class="controls-row">
+                <div class="controls-left">
+                    <button class="icon-btn" id="playPauseBtn" title="Play/Pause"><span class="material-symbols-outlined" id="playIcon">play_arrow</span></button>
+                    <button class="icon-btn" id="rewindBtn" title="Rewind 10s"><span class="material-symbols-outlined">replay_10</span></button>
+                    <button class="icon-btn" id="forwardBtn" title="Forward 10s"><span class="material-symbols-outlined">forward_10</span></button>
+                    
+                    <div class="volume-wrapper-bottom">
+                        <button class="icon-btn" id="muteBtn" title="Mute"><span class="material-symbols-outlined" id="volumeIcon">volume_up</span></button>
+                        <input type="range" class="volume-slider" id="volumeSlider" min="0" max="1" step="0.05" value="1">
+                    </div>
+                </div>
+
+                <div class="controls-right">
+                    <button class="icon-btn" id="infoBtn" title="Developer Info"><span class="material-symbols-outlined">info</span></button>
+                    
+                    <button class="icon-btn" id="statsBtn" title="Stats for Nerds"><span class="material-symbols-outlined">speed</span></button>
+
+                    <div class="settings-wrapper" id="ccWrapper">
+                        <button class="icon-btn" id="ccBtn" title="Subtitles/CC"><span class="material-symbols-outlined">closed_caption</span></button>
+                        <div class="settings-menu" id="ccMenu"></div>
+                    </div>
+
+                    <div class="settings-wrapper" id="settingsWrapper">
+                        <button class="icon-btn" id="settingsBtn" title="Quality Settings"><span class="material-symbols-outlined">settings</span></button>
+                        <div class="settings-menu" id="qualityMenu"></div>
+                    </div>
+                    
+                    <button class="icon-btn" id="aspectRatioBtn" title="Change Aspect Ratio">
+                        <span class="material-symbols-outlined">aspect_ratio</span>
+                    </button>
+                    
+                    <button class="icon-btn" id="bwToggleBtn" title="Toggle Black & White Mode">
+                        <span class="material-symbols-outlined">tonality</span>
+                    </button>
+
+                    <button class="icon-btn" id="pipBtn" title="Picture in Picture"><span class="material-symbols-outlined">picture_in_picture_alt</span></button>
+                    
+                    <button class="icon-btn" id="fullscreenBtn" title="Fullscreen"><span class="material-symbols-outlined" id="fullscreenIcon">fullscreen</span></button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const video = document.getElementById('video');
+        const playerContainer = document.getElementById('playerContainer');
+        const playPauseBtn = document.getElementById('playPauseBtn');
+        const centerPlayBtn = document.getElementById('centerPlayBtn');
+        const playIcon = document.getElementById('playIcon');
+        const progressBar = document.getElementById('progressBar');
+        const currentTimeEl = document.getElementById('currentTime');
+        const durationEl = document.getElementById('duration');
+        const muteBtn = document.getElementById('muteBtn');
+        const volumeIcon = document.getElementById('volumeIcon');
+        const volumeSlider = document.getElementById('volumeSlider');
+        const fullscreenBtn = document.getElementById('fullscreenBtn');
+        const fullscreenIcon = document.getElementById('fullscreenIcon');
+        const rewindBtn = document.getElementById('rewindBtn');
+        const forwardBtn = document.getElementById('forwardBtn');
+        const pipBtn = document.getElementById('pipBtn');
+        const spinner = document.getElementById('spinner');
+        const splashScreen = document.getElementById('splashScreen');
+        
+        const settingsBtn = document.getElementById('settingsBtn');
+        const settingsWrapper = document.getElementById('settingsWrapper');
+        const qualityMenu = document.getElementById('qualityMenu');
+
+        const ccBtn = document.getElementById('ccBtn');
+        const ccWrapper = document.getElementById('ccWrapper');
+        const ccMenu = document.getElementById('ccMenu');
+
+        const bwToggleBtn = document.getElementById('bwToggleBtn');
+        const aspectRatioBtn = document.getElementById('aspectRatioBtn');
+        const toastMsg = document.getElementById('toastMsg');
+
+        const statsBtn = document.getElementById('statsBtn');
+        const statsOverlay = document.getElementById('statsOverlay');
+        const statPlayerName = document.getElementById('statPlayerName');
+        const statPlayerVer = document.getElementById('statPlayerVer');
+        const statFormat = document.getElementById('statFormat');
+        const statDrm = document.getElementById('statDrm');
+        const statRes = document.getElementById('statRes');
+        const statBandwidth = document.getElementById('statBandwidth');
+        const statBitrate = document.getElementById('statBitrate');
+        const updateVersionBtn = document.getElementById('updateVersionBtn');
+        
+        const infoBtn = document.getElementById('infoBtn');
+        const infoOverlay = document.getElementById('infoOverlay');
+        const infoCloseBtn = document.getElementById('infoCloseBtn');
+
+        const toggleGraphBtn = document.getElementById('toggleGraphBtn');
+        const graphContainer = document.getElementById('graphContainer');
+        const canvas = document.getElementById('bufferGraph');
+        const ctx = canvas.getContext('2d');
+        let bufferData = new Array(40).fill(0); 
+        let isGraphVisible = false;
+
+        let statsInterval;
+        let activeManifestUri = 'https://koelmallicklovers.github.io/loversofboots/manifest.mpd';
+
+        // 🎬 SPLASH SCREEN & FIX (NO MUTE FALLBACK)
+        setTimeout(() => {
+            splashScreen.style.opacity = '0';
+            setTimeout(() => {
+                splashScreen.style.display = 'none';
+                
+                const playPromise = video.play();
+                if (playPromise !== undefined) {
+                    playPromise.then(_ => {
+                        playIcon.innerText = 'pause';
+                        playerContainer.classList.remove('paused');
+                    }).catch(error => { 
+                        playerContainer.classList.add('paused'); 
+                        playIcon.innerText = 'play_arrow';
+                    });
+                }
+            }, 1000);
+        }, 10000); 
+
+        // 👨‍💻 DEVELOPER INFO LOGIC
+        infoBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            settingsWrapper.classList.remove('active'); 
+            ccWrapper.classList.remove('active');
+            
+            if (infoOverlay.style.display === 'block') {
+                infoOverlay.style.display = 'none';
+            } else {
+                infoOverlay.style.display = 'block';
+            }
+        });
+        infoCloseBtn.addEventListener('click', () => { infoOverlay.style.display = 'none'; });
+
+        // 🔘 B&W TOGGLE
+        bwToggleBtn.addEventListener('click', () => {
+            video.classList.toggle('video-grayscale');
+            bwToggleBtn.classList.toggle('active');
+            showToast(video.classList.contains('video-grayscale') ? "B&W Mode: ON" : "B&W Mode: OFF");
+        });
+
+        // 📺 ASPECT RATIO LOGIC
+        let currentRatioIndex = 0;
+        const aspectRatios = [
+            { class: '', label: 'Aspect Ratio: Default' },
+            { class: 'ratio-16-9', label: 'Aspect Ratio: 16:9' },
+            { class: 'ratio-4-3', label: 'Aspect Ratio: 4:3' }
+        ];
+        
+        let toastTimeout;
+        function showToast(msg) {
+            toastMsg.innerText = msg;
+            toastMsg.classList.add('show');
+            clearTimeout(toastTimeout);
+            toastTimeout = setTimeout(() => toastMsg.classList.remove('show'), 2500);
+        }
+
+        aspectRatioBtn.addEventListener('click', () => {
+            currentRatioIndex = (currentRatioIndex + 1) % aspectRatios.length;
+            video.classList.remove('ratio-16-9', 'ratio-4-3');
+            
+            if (aspectRatios[currentRatioIndex].class !== '') {
+                video.classList.add(aspectRatios[currentRatioIndex].class);
+            }
+            showToast(aspectRatios[currentRatioIndex].label);
+        });
+
+        // ✌️ MULTI-GESTURE LOGIC (BRIGHTNESS & VOLUME) WITH TOUCH GUARD
+        const brightnessWrapper = document.getElementById('brightnessWrapper');
+        const brightnessBarFill = document.getElementById('brightnessBarFill');
+        const resetBrightnessBtn = document.getElementById('resetBrightnessBtn');
+        
+        const volumeSwipeWrapper = document.getElementById('volumeSwipeWrapper');
+        const volumeSwipeBarFill = document.getElementById('volumeSwipeBarFill');
+        const volumeSwipeIcon = document.getElementById('volumeSwipeIcon');
+        const resetVolumeBtn = document.getElementById('resetVolumeBtn');
+        
+        let touchStartY = 0; let initialBrightness = 1; let currentBrightness = 1; let brightnessTimeout;
+        let touchStartVolY = 0; let initialVolumeSwipe = 1; let currentVolumeSwipe = 1; let volumeSwipeTimeout;
+        let activeSwipeArea = null;
+
+        [resetBrightnessBtn, resetVolumeBtn].forEach(btn => {
+            btn.addEventListener('touchstart', (e) => e.stopPropagation(), { passive: false });
+            btn.addEventListener('touchmove', (e) => e.stopPropagation(), { passive: false });
+        });
+
+        resetBrightnessBtn.addEventListener('click', (e) => {
+            e.stopPropagation(); currentBrightness = 1; document.body.style.setProperty('--video-brightness', currentBrightness);
+            const percent = ((currentBrightness - 0.1) / 1.9) * 100; brightnessBarFill.style.height = `${percent}%`;
+            clearTimeout(brightnessTimeout); brightnessTimeout = setTimeout(() => { brightnessWrapper.classList.remove('show'); }, 1000);
+        });
+
+        resetVolumeBtn.addEventListener('click', (e) => {
+            e.stopPropagation(); currentVolumeSwipe = 1; video.volume = currentVolumeSwipe; video.muted = false;
+            volumeSlider.value = 1; volumeIcon.innerText = 'volume_up'; volumeSwipeIcon.innerText = 'volume_up';
+            volumeSwipeBarFill.style.height = `100%`; clearTimeout(volumeSwipeTimeout);
+            volumeSwipeTimeout = setTimeout(() => { volumeSwipeWrapper.classList.remove('show'); }, 1000);
+        });
+
+        playerContainer.addEventListener('touchstart', (e) => {
+            if (e.target.closest('#controlsOverlay') || e.target.closest('#infoOverlay') || e.target.closest('#statsOverlay')) {
+                activeSwipeArea = null; return;
+            }
+
+            const isFullscreen = !!document.fullscreenElement;
+            const isLandscape = window.innerWidth > window.innerHeight;
+            if (isFullscreen && isLandscape && e.touches.length === 1) {
+                const touch = e.touches[0];
+                if (touch.clientX < window.innerWidth / 2) {
+                    activeSwipeArea = 'left'; touchStartY = touch.clientY; initialBrightness = currentBrightness;
+                } else {
+                    activeSwipeArea = 'right'; touchStartVolY = touch.clientY; initialVolumeSwipe = video.volume;
+                }
+            }
+        }, { passive: false });
+
+        playerContainer.addEventListener('touchmove', (e) => {
+            if (!activeSwipeArea) return; 
+
+            const isFullscreen = !!document.fullscreenElement;
+            const isLandscape = window.innerWidth > window.innerHeight;
+            if (isFullscreen && isLandscape && e.touches.length === 1) {
+                e.preventDefault(); 
+                const touch = e.touches[0];
+                if (activeSwipeArea === 'left') {
+                    const deltaY = touchStartY - touch.clientY;
+                    const change = (deltaY / (window.innerHeight / 2)); 
+                    currentBrightness = Math.max(0.1, Math.min(2.0, initialBrightness + change)); 
+                    document.body.style.setProperty('--video-brightness', currentBrightness);
+                    brightnessBarFill.style.height = `${((currentBrightness - 0.1) / 1.9) * 100}%`;
+                    brightnessWrapper.classList.add('show'); clearTimeout(brightnessTimeout);
+                } else if (activeSwipeArea === 'right') {
+                    const deltaY = touchStartVolY - touch.clientY;
+                    const change = (deltaY / (window.innerHeight / 2)); 
+                    currentVolumeSwipe = Math.max(0, Math.min(1, initialVolumeSwipe + change)); 
+                    video.volume = currentVolumeSwipe; video.muted = currentVolumeSwipe === 0;
+                    volumeSlider.value = currentVolumeSwipe;
+                    const volIconName = currentVolumeSwipe === 0 ? 'volume_off' : 'volume_up';
+                    volumeIcon.innerText = volIconName; volumeSwipeIcon.innerText = volIconName;
+                    volumeSwipeBarFill.style.height = `${currentVolumeSwipe * 100}%`;
+                    volumeSwipeWrapper.classList.add('show'); clearTimeout(volumeSwipeTimeout);
+                }
+            }
+        }, { passive: false });
+
+        playerContainer.addEventListener('touchend', () => {
+            if (activeSwipeArea === 'left') { clearTimeout(brightnessTimeout); brightnessTimeout = setTimeout(() => { brightnessWrapper.classList.remove('show'); }, 3000); } 
+            else if (activeSwipeArea === 'right') { clearTimeout(volumeSwipeTimeout); volumeSwipeTimeout = setTimeout(() => { volumeSwipeWrapper.classList.remove('show'); }, 3000); }
+            activeSwipeArea = null;
+        });
+
+        // 📈 GRAPH LOGIC & BUTTON TOGGLE
+        toggleGraphBtn.addEventListener('click', () => {
+            isGraphVisible = !isGraphVisible;
+            graphContainer.style.display = isGraphVisible ? 'block' : 'none';
+            if(isGraphVisible) {
+                toggleGraphBtn.innerText = 'Hide Buffer Health Graph';
+                toggleGraphBtn.style.background = '#00a8e1'; toggleGraphBtn.style.color = '#fff'; updateVersionBtn.style.display = 'none'; drawECGGraph(); 
+            } else {
+                toggleGraphBtn.innerText = 'Show Buffer Health Graph';
+                toggleGraphBtn.style.background = '#1a242f'; toggleGraphBtn.style.color = '#00a8e1'; updateVersionBtn.style.display = 'block'; 
+            }
+        });
+
+        function drawECGGraph() {
+            if(!isGraphVisible) return;
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)'; ctx.lineWidth = 1; ctx.beginPath();
+            for(let x=10; x<canvas.width; x+=15) { ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); }
+            for(let y=10; y<canvas.height; y+=15) { ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); }
+            ctx.stroke();
+
+            ctx.beginPath(); ctx.strokeStyle = '#00a8e1'; ctx.lineWidth = 2; ctx.shadowBlur = 6; ctx.shadowColor = '#00a8e1'; ctx.lineJoin = 'round';
+            let maxBuffer = Math.max(...bufferData, 15); 
+            for (let i = 0; i < bufferData.length; i++) {
+                let x = (i / (bufferData.length - 1)) * canvas.width; let y = canvas.height - ((bufferData[i] / maxBuffer) * (canvas.height - 10)) - 5; 
+                if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+            }
+            ctx.stroke(); ctx.shadowBlur = 0; 
+            let lastX = canvas.width - 2; let lastY = canvas.height - ((bufferData[bufferData.length - 1] / maxBuffer) * (canvas.height - 10)) - 5;
+            ctx.beginPath(); ctx.arc(lastX, lastY, 3, 0, Math.PI * 2); ctx.fillStyle = '#fff'; ctx.fill();
+        }
+
+        function updateStats() {
+            if (!window.shakaPlayerInstance) return;
+            const stats = window.shakaPlayerInstance.getStats();
+            statPlayerName.innerText = "Shaka Engine"; statPlayerVer.innerText = "v" + shaka.Player.version;
+            if(activeManifestUri.toLowerCase().includes('.mpd')) statFormat.innerText = "DASH (.mpd)";
+            else if(activeManifestUri.toLowerCase().includes('.m3u8')) statFormat.innerText = "HLS (.m3u8)";
+            else statFormat.innerText = "Unknown";
+
+            const keySystem = window.shakaPlayerInstance.keySystem();
+            if (keySystem) {
+                if (keySystem.includes('clearkey')) statDrm.innerText = "ClearKey DRM";
+                else if (keySystem.includes('widevine')) statDrm.innerText = "Widevine DRM";
+                else if (keySystem.includes('playready')) statDrm.innerText = "PlayReady";
+                else statDrm.innerText = keySystem;
+            } else { statDrm.innerText = "None / Clear"; }
+            
+            statRes.innerText = `${stats.width || 0} x ${stats.height || 0}`;
+            statBandwidth.innerText = formatBps(stats.estimatedBandwidth); statBitrate.innerText = formatBps(stats.streamBandwidth);
+            let bufferAhead = 0;
+            if(video.buffered.length > 0) { bufferAhead = video.buffered.end(video.buffered.length - 1) - video.currentTime; if(bufferAhead < 0) bufferAhead = 0; }
+            bufferData.push(bufferAhead); if(bufferData.length > 40) bufferData.shift();
+            if(isGraphVisible && statsOverlay.style.display === 'block') drawECGGraph();
+        }
+
+        statsBtn.addEventListener('click', () => {
+            if (statsOverlay.style.display === 'none' || statsOverlay.style.display === '') {
+                statsOverlay.style.display = 'block'; statsInterval = setInterval(updateStats, 1000); updateStats(); 
+            } else { statsOverlay.style.display = 'none'; clearInterval(statsInterval); }
+        });
+
+        // 🔥 UPDATE LOGIC
+        updateVersionBtn.addEventListener('click', async () => {
+            updateVersionBtn.innerText = "Fetching Latest Data..."; updateVersionBtn.disabled = true; spinner.style.display = 'block';
+            const savedTime = video.currentTime;
+            try {
+                if (window.shakaPlayerInstance) await window.shakaPlayerInstance.destroy();
+                const newScript = document.createElement('script'); newScript.src = "https://cdn.jsdelivr.net/npm/shaka-player@latest/dist/shaka-player.compiled.js";
+                newScript.onload = async () => {
+                    updateVersionBtn.innerText = "Updated Successfully! ✓"; updateVersionBtn.style.background = "#2e7d32"; updateVersionBtn.style.color = "#fff";
+                    await initPlayer(); video.currentTime = savedTime; video.play(); updateStats(); spinner.style.display = 'none';
+                    setTimeout(() => { updateVersionBtn.innerText = "Player is Up to Date"; }, 3000);
+                }; document.head.appendChild(newScript);
+            } catch (error) { console.error("Update Failed", error); updateVersionBtn.innerText = "Update Failed!"; updateVersionBtn.disabled = false; }
+        });
+
+        settingsBtn.addEventListener('click', (e) => { e.stopPropagation(); settingsWrapper.classList.toggle('active'); ccWrapper.classList.remove('active'); });
+        ccBtn.addEventListener('click', (e) => { e.stopPropagation(); ccWrapper.classList.toggle('active'); settingsWrapper.classList.remove('active'); });
+        document.addEventListener('click', (e) => {
+            if (!settingsWrapper.contains(e.target)) settingsWrapper.classList.remove('active');
+            if (!ccWrapper.contains(e.target)) ccWrapper.classList.remove('active');
+            if (!infoOverlay.contains(e.target) && e.target !== infoBtn) infoOverlay.style.display = 'none';
+        });
+
+        function formatBps(bps) {
+            if (!bps || isNaN(bps)) return "0 Kbps"; return bps >= 1000000 ? (bps / 1000000).toFixed(2) + " Mbps" : (bps / 1000).toFixed(2) + " Kbps";
+        }
+
+        async function initPlayer() {
+            shaka.polyfill.installAll();
+            if (shaka.Player.isBrowserSupported()) {
+                const player = new shaka.Player(video); window.shakaPlayerInstance = player;
+                player.addEventListener('buffering', (event) => { spinner.style.display = event.buffering ? 'block' : 'none'; });
+                const keyId = "WLgq7CeKisu4JWt8B4dhBQ"; const key = "kcpnk-8WxUn7g1TTmMARIw";
+                player.configure({ drm: { clearKeys: { [keyId]: key } } });
+                try { await player.load(activeManifestUri); generateQualityMenu(player); await setupSubtitles(player); } 
+                catch (e) { console.error('Error loading video', e); }
+            }
+        }
+
+        async function setupSubtitles(player) {
+            const possibleFiles = [{ url: 'English.srt', lang: 'en', label: 'English' }, { url: 'Hindi.srt', lang: 'hi', label: 'Hindi' }, { url: 'subtitle.srt', lang: 'en', label: 'Subtitle 1' }];
+            for (const file of possibleFiles) {
+                try {
+                    const response = await fetch(file.url, { method: 'HEAD' });
+                    if (response.ok) await player.addTextTrackAsync(file.url, file.lang, 'subtitle', 'text/srt', null, file.label);
+                } catch (error) {}
+            } generateCCMenu(player);
+        }
+
+        function generateCCMenu(player) {
+            ccMenu.innerHTML = ''; const tracks = player.getTextTracks();
+            if (tracks.length === 0) { const noSub = document.createElement('button'); noSub.className = 'popup-btn disabled'; noSub.innerText = 'No Subtitle'; ccMenu.appendChild(noSub); return; }
+            const offBtn = document.createElement('button'); offBtn.className = 'popup-btn active'; offBtn.innerText = 'Off';
+            offBtn.onclick = () => { player.setTextTrackVisibility(false); setCcActiveBtn(offBtn); }; ccMenu.appendChild(offBtn);
+            tracks.forEach(track => {
+                const btn = document.createElement('button'); btn.className = 'popup-btn'; btn.innerText = track.label || track.language;
+                btn.onclick = () => { player.selectTextTrack(track); player.setTextTrackVisibility(true); setCcActiveBtn(btn); }; ccMenu.appendChild(btn);
+            });
+        }
+        function setCcActiveBtn(activeBtn) { document.querySelectorAll('#ccMenu .popup-btn').forEach(btn => btn.classList.remove('active')); activeBtn.classList.add('active'); ccWrapper.classList.remove('active'); }
+
+        function generateQualityMenu(player) {
+            qualityMenu.innerHTML = ''; const autoBtn = document.createElement('button'); autoBtn.className = 'popup-btn active'; autoBtn.innerText = 'Auto';
+            autoBtn.onclick = () => { player.configure({ abr: { enabled: true } }); setQualityActiveBtn(autoBtn); }; qualityMenu.appendChild(autoBtn);
+            const tracks = player.getVariantTracks(); const uniqueHeights = [...new Set(tracks.map(t => t.height).filter(Boolean))].sort((a, b) => b - a);
+            uniqueHeights.forEach(height => {
+                const btn = document.createElement('button'); btn.className = 'popup-btn'; btn.innerText = height + 'p';
+                btn.onclick = () => {
+                    player.configure({ abr: { enabled: false } });
+                    const trackToSelect = tracks.filter(t => t.height === height).sort((a, b) => b.bandwidth - a.bandwidth)[0];
+                    player.selectVariantTrack(trackToSelect, true); setQualityActiveBtn(btn);
+                }; qualityMenu.appendChild(btn);
+            });
+        }
+        function setQualityActiveBtn(activeBtn) { document.querySelectorAll('#qualityMenu .popup-btn').forEach(btn => btn.classList.remove('active')); activeBtn.classList.add('active'); settingsWrapper.classList.remove('active'); }
+
+        document.addEventListener('DOMContentLoaded', initPlayer);
+
+        function togglePlay() {
+            if (video.paused) { video.play(); playIcon.innerText = 'pause'; playerContainer.classList.remove('paused'); } 
+            else { video.pause(); playIcon.innerText = 'play_arrow'; playerContainer.classList.add('paused'); }
+        }
+
+        playPauseBtn.addEventListener('click', togglePlay); centerPlayBtn.addEventListener('click', togglePlay); video.addEventListener('click', togglePlay);
+        rewindBtn.addEventListener('click', () => video.currentTime -= 10); forwardBtn.addEventListener('click', () => video.currentTime += 10);
+
+        function formatTime(seconds) {
+            if (isNaN(seconds)) return "00:00";
+            const h = Math.floor(seconds / 3600), m = Math.floor((seconds % 3600) / 60), s = Math.floor(seconds % 60);
+            return h > 0 ? `${h}:${m < 10 ? '0' : ''}${m}:${s < 10 ? '0' : ''}${s}` : `${m < 10 ? '0' : ''}${m}:${s < 10 ? '0' : ''}${s}`;
+        }
+
+        video.addEventListener('timeupdate', () => {
+            progressBar.value = video.currentTime; currentTimeEl.innerText = formatTime(video.currentTime);
+            const percentage = (video.currentTime / video.duration) * 100;
+            progressBar.style.background = `linear-gradient(to right, #00a8e1 ${percentage}%, rgba(255,255,255,0.3) ${percentage}%)`;
+        });
+        video.addEventListener('loadedmetadata', () => { progressBar.max = video.duration; durationEl.innerText = formatTime(video.duration); });
+        
+        progressBar.addEventListener('input', () => video.currentTime = progressBar.value);
+
+        muteBtn.addEventListener('click', () => {
+            video.muted = !video.muted; volumeIcon.innerText = video.muted || video.volume === 0 ? 'volume_off' : 'volume_up'; volumeSlider.value = video.muted ? 0 : video.volume;
+        });
+        volumeSlider.addEventListener('input', (e) => {
+            video.volume = e.target.value; video.muted = video.volume === 0; volumeIcon.innerText = video.volume === 0 ? 'volume_off' : 'volume_up';
+        });
+
+        pipBtn.addEventListener('click', async () => { try { if (document.pictureInPictureElement) await document.exitPictureInPicture(); else await video.requestPictureInPicture(); } catch (error) {} });
+
+        fullscreenBtn.addEventListener('click', async () => {
+            try {
+                if (!document.fullscreenElement) {
+                    if (playerContainer.requestFullscreen) await playerContainer.requestFullscreen();
+                    else if (playerContainer.webkitRequestFullscreen) await playerContainer.webkitRequestFullscreen();
+                    if (screen.orientation && screen.orientation.lock) { try { await screen.orientation.lock('landscape'); } catch (err) {} }
+                } else { if (document.exitFullscreen) await document.exitFullscreen(); }
+            } catch (error) {}
+        });
+
+        document.addEventListener('fullscreenchange', () => {
+            if (!document.fullscreenElement) { fullscreenIcon.innerText = 'fullscreen'; if (screen.orientation && screen.orientation.unlock) screen.orientation.unlock(); } 
+            else { fullscreenIcon.innerText = 'fullscreen_exit'; }
+        });
+
+        let hideTimeout;
+        const resetHideTimeout = () => {
+            playerContainer.classList.remove('hide-controls'); clearTimeout(hideTimeout);
+            if (!video.paused && !settingsWrapper.classList.contains('active') && !ccWrapper.classList.contains('active')) {
+                hideTimeout = setTimeout(() => playerContainer.classList.add('hide-controls'), 3000);
+            }
+        };
+
+        playerContainer.addEventListener('mousemove', resetHideTimeout);
+        playerContainer.addEventListener('mouseleave', () => {
+            if (!video.paused && !settingsWrapper.classList.contains('active') && !ccWrapper.classList.contains('active')) playerContainer.classList.add('hide-controls');
+        });
+        video.addEventListener('play', resetHideTimeout);
+
+    </script>
+</body>
+</html>
